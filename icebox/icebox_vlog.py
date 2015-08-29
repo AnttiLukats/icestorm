@@ -1,4 +1,4 @@
-#!/usr/bin/python2
+#!/usr/bin/env python3
 #
 #  Copyright (C) 2015  Clifford Wolf <clifford@clifford.at>
 #
@@ -14,9 +14,6 @@
 #  ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 #  OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #
-
-from __future__ import division
-from __future__ import print_function
 
 import icebox
 import getopt, sys, re
@@ -98,10 +95,11 @@ for o, a in opts:
                     p = line[1]
                     if o == "-P":
                         p = p.lower()
-                        p = p.replace("_ibuf", "")
-                        p = p.replace("_obuft", "")
-                        p = p.replace("_obuf", "")
-                        p = p.replace("_gb_io", "")
+                        p = re.sub(r"_ibuf$", "", p)
+                        p = re.sub(r"_obuft$", "", p)
+                        p = re.sub(r"_obuf$", "", p)
+                        p = re.sub(r"_gb_io$", "", p)
+                        p = re.sub(r"_pad(_[0-9]+|)$", r"\1", p)
                     portnames.add(p)
                     if not re.match(r"[a-zA-Z_][a-zA-Z0-9_]*$", p):
                         p = "\\%s " % p
@@ -211,7 +209,7 @@ for bit in ic.extra_bits:
             s2 = (pin_entry[0], pin_entry[1], "padin_%d" % pin_entry[2])
             extra_connections.append((s1, s2))
 
-for idx, tile in ic.io_tiles.items():
+for idx, tile in list(ic.io_tiles.items()):
     tc = icebox.tileconfig(tile)
     iocells_type[(idx[0], idx[1], 0)] = ["0" for i in range(6)]
     iocells_type[(idx[0], idx[1], 1)] = ["0" for i in range(6)]
@@ -282,7 +280,6 @@ for segs in sorted(ic.group_segments(extra_connections=extra_connections, extra_
         if match:
             idx = (s[0], s[1], int(match.group(1)))
             p = "io_%d_%d_%d" % idx
-            net_segs.add(p)
             if lookup_pins or pcf_data:
                 for entry in ic.pinloc_db():
                     if idx[0] == entry[1] and idx[1] == entry[2] and idx[2] == entry[3]:
@@ -293,7 +290,7 @@ for segs in sorted(ic.group_segments(extra_connections=extra_connections, extra_
                             p = pcf_data[(entry[1], entry[2], entry[3])]
                             unmatched_ports.discard(p)
                         elif lookup_pins:
-                            p = "pin_%d" % entry[0]
+                            p = "pin_%s" % entry[0]
             if not renamed_net_to_port:
                 n = p
                 if idx in iocells_in and idx not in iocells_out:
@@ -758,15 +755,15 @@ for lut in luts_queue:
     tile = ic.logic_tiles[(lut[0], lut[1])]
     lut_bits = icebox.get_lutff_lut_bits(tile, lut[2])
     seq_bits = icebox.get_lutff_seq_bits(tile, lut[2])
-    net_in0 = seg_to_net((lut[0], lut[1], "lutff_%d/in_0" % lut[2]), "0")
-    net_in1 = seg_to_net((lut[0], lut[1], "lutff_%d/in_1" % lut[2]), "0")
-    net_in2 = seg_to_net((lut[0], lut[1], "lutff_%d/in_2" % lut[2]), "0")
-    net_in3 = seg_to_net((lut[0], lut[1], "lutff_%d/in_3" % lut[2]), "0")
+    net_in0 = seg_to_net((lut[0], lut[1], "lutff_%d/in_0" % lut[2]), "1'b0")
+    net_in1 = seg_to_net((lut[0], lut[1], "lutff_%d/in_1" % lut[2]), "1'b0")
+    net_in2 = seg_to_net((lut[0], lut[1], "lutff_%d/in_2" % lut[2]), "1'b0")
+    net_in3 = seg_to_net((lut[0], lut[1], "lutff_%d/in_3" % lut[2]), "1'b0")
     net_out = seg_to_net((lut[0], lut[1], "lutff_%d/out" % lut[2]))
     if seq_bits[0] == "1":
         net_cout = seg_to_net((lut[0], lut[1], "lutff_%d/cout" % lut[2]))
-        net_in1 = seg_to_net((lut[0], lut[1], "lutff_%d/in_1" % lut[2]), "0")
-        net_in2 = seg_to_net((lut[0], lut[1], "lutff_%d/in_2" % lut[2]), "0")
+        net_in1 = seg_to_net((lut[0], lut[1], "lutff_%d/in_1" % lut[2]), "1'b0")
+        net_in2 = seg_to_net((lut[0], lut[1], "lutff_%d/in_2" % lut[2]), "1'b0")
         if lut[2] == 0:
             net_cin = seg_to_net((lut[0], lut[1], "carry_in_mux"))
             if icebox.get_carry_cascade_bit(tile) == "0":
@@ -776,7 +773,7 @@ for lut in luts_queue:
                 if not strip_comments:
                     text_wires.append("")
         else:
-            net_cin = seg_to_net((lut[0], lut[1], "lutff_%d/cout" % (lut[2]-1)), "0")
+            net_cin = seg_to_net((lut[0], lut[1], "lutff_%d/cout" % (lut[2]-1)), "1'b0")
         carry_assigns.append([net_cout, "/* CARRY %2d %2d %2d */ (%s & %s) | ((%s | %s) & %s)" %
                 (lut[0], lut[1], lut[2], net_in1, net_in2, net_in1, net_in2, net_cin)])
     if seq_bits[1] == "1":
@@ -785,15 +782,15 @@ for lut in luts_queue:
         if not strip_comments:
             text_wires.append("// FF %s" % (lut,))
             text_wires.append("")
-        net_cen = seg_to_net((lut[0], lut[1], "lutff_global/cen"), "1")
-        net_clk = seg_to_net((lut[0], lut[1], "lutff_global/clk"), "0")
-        net_sr  = seg_to_net((lut[0], lut[1], "lutff_global/s_r"), "0")
+        net_cen = seg_to_net((lut[0], lut[1], "lutff_global/cen"), "1'b1")
+        net_clk = seg_to_net((lut[0], lut[1], "lutff_global/clk"), "1'b0")
+        net_sr  = seg_to_net((lut[0], lut[1], "lutff_global/s_r"), "1'b0")
         if seq_bits[3] == "0":
-            always_stmts.append("/* FF %2d %2d %2d */ always @(%sedge %s) if (%s) %s <= %s ? %s : %s;" %
+            always_stmts.append("/* FF %2d %2d %2d */ always @(%sedge %s) if (%s) %s <= %s ? 1'b%s : %s;" %
                     (lut[0], lut[1], lut[2], "neg" if icebox.get_negclk_bit(tile) == "1" else "pos",
                     net_clk, net_cen, net_out, net_sr, seq_bits[2], n))
         else:
-            always_stmts.append("/* FF %2d %2d %2d */ always @(%sedge %s, posedge %s) if (%s) %s <= %s; else if (%s) %s <= %s;" %
+            always_stmts.append("/* FF %2d %2d %2d */ always @(%sedge %s, posedge %s) if (%s) %s <= 1'b%s; else if (%s) %s <= %s;" %
                     (lut[0], lut[1], lut[2], "neg" if icebox.get_negclk_bit(tile) == "1" else "pos",
                     net_clk, net_sr, net_sr, net_out, seq_bits[2], net_cen, net_out, n))
         wire_to_reg.add(net_out)
@@ -805,7 +802,7 @@ for lut in luts_queue:
     else:
         def make_lut_expr(bits, sigs):
             if not sigs:
-                return "%s" % bits[0]
+                return "1'b%s" % bits[0]
             l_expr = make_lut_expr(bits[0:len(bits)//2], sigs[1:])
             h_expr = make_lut_expr(bits[len(bits)//2:len(bits)], sigs[1:])
             if h_expr == l_expr: return h_expr
@@ -834,7 +831,7 @@ if do_collect:
             vec_ports_dir[match.group(2)] = match.group(1)
         else:
             new_text_ports.add(port)
-    for port, direct in vec_ports_dir.items():
+    for port, direct in list(vec_ports_dir.items()):
         min_idx = vec_ports_min[port]
         max_idx = vec_ports_max[port]
         new_text_ports.add("%s [%d:%d] %s " % (direct, max_idx, min_idx, port))
@@ -874,7 +871,7 @@ if strip_comments:
     print()
 
 if do_collect:
-    for port, direct in vec_ports_dir.items():
+    for port, direct in list(vec_ports_dir.items()):
         min_idx = vec_ports_min[port]
         max_idx = vec_ports_max[port]
         for i in range(min_idx, max_idx+1):
